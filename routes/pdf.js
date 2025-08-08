@@ -4,7 +4,9 @@ const multer = require('multer')
 const path = require('path')
 const fs = require('fs')
 const auth = require('../middleware/auth')
+const subscriptionCheck = require('../middleware/subscriptionCheck')
 const Pdf = require('../models/Pdf')
+const User = require('../models/User')
 const { textToSpeechConvert } = require('../utils/tts')
 
 // Use legacy build for CommonJS compatibility
@@ -37,44 +39,58 @@ const upload = multer({
 })
 
 // ===== PDF Upload & Page-wise Extraction =====
-router.post('/upload', auth, upload.single('pdf'), async (req, res) => {
-  try {
-    const dataBuffer = fs.readFileSync(req.file.path)
-    const loadingTask = pdfjsLib.getDocument({ data: dataBuffer })
-    const pdfDocument = await loadingTask.promise
+router.post(
+  '/upload',
+  auth,
+  subscriptionCheck, // <-- fixed missing comma here
+  upload.single('pdf'),
+  async (req, res) => {
+    try {
+      const dataBuffer = fs.readFileSync(req.file.path)
+      const loadingTask = pdfjsLib.getDocument({ data: dataBuffer })
+      const pdfDocument = await loadingTask.promise
 
-    const pagesArray = []
-    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum)
-      const textContent = await page.getTextContent()
-      const pageText = textContent.items.map((item) => item.str).join(' ')
+      const pagesArray = []
+      for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+        const page = await pdfDocument.getPage(pageNum)
+        const textContent = await page.getTextContent()
+        const pageText = textContent.items.map((item) => item.str).join(' ')
 
-      pagesArray.push({
-        pageNumber: pageNum,
-        text: pageText,
-        explanation: '', // placeholder for explanation later
+        pagesArray.push({
+          pageNumber: pageNum,
+          text: pageText,
+          explanation: '', // placeholder for explanation later
+        })
+      }
+
+      const pdfRecord = new Pdf({
+        user: req.user.userId,
+        originalFileName: req.file.originalname,
+        storedFileName: req.file.filename,
+        pages: pagesArray,
       })
+
+      await pdfRecord.save()
+
+      // Decrement freeTrialCount if user is on free plan and has trials left
+      const user = await User.findById(req.user.userId)
+      if (user.subscriptionStatus.plan === 'free' && user.freeTrialCount > 0) {
+        user.freeTrialCount -= 1
+        await user.save()
+      }
+
+      res.json({
+        message: 'PDF uploaded and processed page-wise',
+        pdfId: pdfRecord._id,
+        totalPages: pagesArray.length,
+        freeTrialLeft: user.freeTrialCount, // optional: send remaining trials to frontend
+      })
+    } catch (error) {
+      console.error(error)
+      res.status(500).json({ message: 'Failed to process PDF' })
     }
-
-    const pdfRecord = new Pdf({
-      user: req.user.userId,
-      originalFileName: req.file.originalname,
-      storedFileName: req.file.filename,
-      pages: pagesArray,
-    })
-
-    await pdfRecord.save()
-
-    res.json({
-      message: 'PDF uploaded and processed page-wise',
-      pdfId: pdfRecord._id,
-      totalPages: pagesArray.length,
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ message: 'Failed to process PDF' })
   }
-})
+)
 
 // ===== Generate Explanations for Each Page =====
 router.post('/generate/:pdfId', auth, async (req, res) => {
