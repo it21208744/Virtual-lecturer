@@ -14,6 +14,7 @@ const UserSchema = new mongoose.Schema(
       plan: { type: String, default: 'free' }, // free, monthly, yearly
       expiryDate: { type: Date },
     },
+    trialUploadsLeft: { type: Number, default: 3 },
   },
   { timestamps: true }
 )

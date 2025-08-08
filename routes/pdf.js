@@ -132,4 +132,35 @@ router.post('/generate/:pdfId', auth, async (req, res) => {
   }
 })
 
+router.get('/pdf/:pdfId', auth, async (req, res) => {
+  try {
+    const pdfDoc = await Pdf.findOne({
+      _id: req.params.pdfId,
+      user: req.user.userId,
+    })
+    if (!pdfDoc) return res.status(404).json({ message: 'PDF not found' })
+
+    // Build full audio URLs for each page (adjust base URL as needed)
+    const baseAudioUrl = `${req.protocol}://${req.get('host')}/tts-audio/`
+
+    const pagesWithAudioUrls = pdfDoc.pages.map((page) => ({
+      pageNumber: page.pageNumber,
+      text: page.text,
+      explanation: page.explanation,
+      audioUrl: page.audioFileName
+        ? baseAudioUrl + page.audioFileName.replace(/\\/g, '/')
+        : null,
+    }))
+
+    res.json({
+      pdfId: pdfDoc._id,
+      originalFileName: pdfDoc.originalFileName,
+      pages: pagesWithAudioUrls,
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to fetch PDF data' })
+  }
+})
+
 module.exports = router
