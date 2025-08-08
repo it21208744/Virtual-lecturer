@@ -27,3 +27,6 @@ build/
 
 # Coverage directory for tests (if you add tests later)
 coverage/
+
+tts-audio/
+uploads/

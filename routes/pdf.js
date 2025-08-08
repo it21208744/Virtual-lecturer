@@ -5,6 +5,7 @@ const path = require('path')
 const fs = require('fs')
 const auth = require('../middleware/auth')
 const Pdf = require('../models/Pdf')
+const { textToSpeechConvert } = require('../utils/tts')
 
 // Use legacy build for CommonJS compatibility
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js')
@@ -77,7 +78,7 @@ router.post('/upload', auth, upload.single('pdf'), async (req, res) => {
 
 // ===== Generate Explanations for Each Page =====
 router.post('/generate/:pdfId', auth, async (req, res) => {
-  const { style } = req.body // optional style adjustment
+  const { style, voice, speed } = req.body // optional TTS params
   const { pdfId } = req.params
 
   try {
@@ -87,20 +88,40 @@ router.post('/generate/:pdfId', auth, async (req, res) => {
     for (let page of pdfDoc.pages) {
       if (!page.text || page.text.trim() === '') {
         page.explanation = '[No text found on this page]'
+        page.audioFileName = ''
         continue
       }
+
+      // Generate explanation
       const explanation = await generateExplanation(page.text, style)
       page.explanation = explanation
+
+      // Generate TTS audio buffer
+      const audioContent = await textToSpeechConvert(
+        explanation,
+        voice || 'en-US-Wavenet-D',
+        speed || 1.0
+      )
+
+      // Save audio file locally (e.g., in 'tts-audio' folder)
+      const audioFileName = `tts-${pdfDoc._id}-${page.pageNumber}.mp3`
+      const audioFilePath = path.join(__dirname, '../tts-audio/', audioFileName)
+
+      await fs.promises.writeFile(audioFilePath, audioContent, 'binary')
+      page.audioFileName = audioFileName
     }
 
     await pdfDoc.save()
+
     res.json({
-      message: 'Explanations generated for all pages',
+      message: 'Explanations and audio generated',
       pdf: pdfDoc,
     })
   } catch (error) {
     console.error(error)
-    res.status(500).json({ message: 'Failed to generate explanations' })
+    res
+      .status(500)
+      .json({ message: 'Failed to generate explanations and audio' })
   }
 })
 
