@@ -61,4 +61,50 @@ router.get('/verify-email', async (req, res) => {
   }
 })
 
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body
+
+  try {
+    const user = await User.findOne({ email })
+    if (!user) return res.status(400).json({ message: 'Invalid credentials' })
+
+    if (!user.isEmailVerified) {
+      return res
+        .status(401)
+        .json({ message: 'Email not verified. Please check your inbox.' })
+    }
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash)
+    if (!isMatch)
+      return res.status(400).json({ message: 'Invalid credentials' })
+
+    const payload = {
+      userId: user._id,
+      email: user.email,
+      name: user.name,
+      subscriptionStatus: user.subscriptionStatus,
+    }
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' })
+
+    res.json({ token, user: payload })
+  } catch (error) {
+    console.error(error)
+    res.status(500).send('Server error')
+  }
+})
+
+const auth = require('../middleware/auth')
+
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select(
+      '-passwordHash -emailVerificationToken'
+    )
+    res.json(user)
+  } catch (error) {
+    res.status(500).send('Server error')
+  }
+})
+
 module.exports = router
