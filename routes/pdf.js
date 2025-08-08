@@ -93,7 +93,7 @@ router.post(
 )
 
 // ===== Generate Explanations for Each Page =====
-router.post('/generate/:pdfId', auth, async (req, res) => {
+router.post('/generate/:pdfId', auth, subscriptionCheck, async (req, res) => {
   const { style, voice, speed } = req.body
   const { pdfId } = req.params
 
