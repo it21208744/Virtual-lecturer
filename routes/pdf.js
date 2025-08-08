@@ -3,10 +3,19 @@ const router = express.Router()
 const multer = require('multer')
 const path = require('path')
 const fs = require('fs')
-const pdfParse = require('pdf-parse')
 const auth = require('../middleware/auth')
 const Pdf = require('../models/Pdf')
 
+// Use legacy build for CommonJS compatibility
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js')
+pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(
+  __dirname,
+  '../node_modules/pdfjs-dist/legacy/build/pdf.worker.js'
+)
+
+const generateExplanation = require('../utils/llama')
+
+// Multer storage config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/')
@@ -26,47 +35,47 @@ const upload = multer({
   },
 })
 
+// ===== PDF Upload & Page-wise Extraction =====
 router.post('/upload', auth, upload.single('pdf'), async (req, res) => {
   try {
     const dataBuffer = fs.readFileSync(req.file.path)
+    const loadingTask = pdfjsLib.getDocument({ data: dataBuffer })
+    const pdfDocument = await loadingTask.promise
 
-    // Extract text per page
-    const pdfData = await pdfParse(dataBuffer, {
-      pagerender: (pageData) =>
-        pageData.getTextContent().then((textContent) => {
-          return textContent.items.map((item) => item.str).join(' ')
-        }),
-    })
+    const pagesArray = []
+    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+      const page = await pdfDocument.getPage(pageNum)
+      const textContent = await page.getTextContent()
+      const pageText = textContent.items.map((item) => item.str).join(' ')
 
-    // pdfData.text is all text combined, but we want per page text:
-    // pdf-parse doesn’t provide direct per-page text in the default API,
-    // so you might need to parse it differently or use pdfjs-dist for more control.
-    // For MVP, you can use combined text, or explore pdfjs-dist if you want per-page text.
+      pagesArray.push({
+        pageNumber: pageNum,
+        text: pageText,
+        explanation: '', // placeholder for explanation later
+      })
+    }
 
-    // For simplicity here, store the entire text as page 1 (adjust later)
     const pdfRecord = new Pdf({
       user: req.user.userId,
       originalFileName: req.file.originalname,
       storedFileName: req.file.filename,
-      pages: [
-        {
-          pageNumber: 1,
-          text: pdfData.text,
-        },
-      ],
+      pages: pagesArray,
     })
 
     await pdfRecord.save()
 
-    res.json({ message: 'PDF uploaded and processed', pdfId: pdfRecord._id })
+    res.json({
+      message: 'PDF uploaded and processed page-wise',
+      pdfId: pdfRecord._id,
+      totalPages: pagesArray.length,
+    })
   } catch (error) {
     console.error(error)
     res.status(500).json({ message: 'Failed to process PDF' })
   }
 })
 
-const generateExplanation = require('../utils/llama')
-
+// ===== Generate Explanations for Each Page =====
 router.post('/generate/:pdfId', auth, async (req, res) => {
   const { style } = req.body // optional style adjustment
   const { pdfId } = req.params
@@ -76,12 +85,19 @@ router.post('/generate/:pdfId', auth, async (req, res) => {
     if (!pdfDoc) return res.status(404).json({ message: 'PDF not found' })
 
     for (let page of pdfDoc.pages) {
+      if (!page.text || page.text.trim() === '') {
+        page.explanation = '[No text found on this page]'
+        continue
+      }
       const explanation = await generateExplanation(page.text, style)
       page.explanation = explanation
     }
 
     await pdfDoc.save()
-    res.json({ message: 'Explanations generated', pdf: pdfDoc })
+    res.json({
+      message: 'Explanations generated for all pages',
+      pdf: pdfDoc,
+    })
   } catch (error) {
     console.error(error)
     res.status(500).json({ message: 'Failed to generate explanations' })
