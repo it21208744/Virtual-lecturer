@@ -30,4 +30,4 @@ coverage/
 
 tts-audio/
 uploads/
-google-credentials.json
+config/google-credentials.json
