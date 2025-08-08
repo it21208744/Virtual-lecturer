@@ -65,4 +65,27 @@ router.post('/upload', auth, upload.single('pdf'), async (req, res) => {
   }
 })
 
+const generateExplanation = require('../utils/llama')
+
+router.post('/generate/:pdfId', auth, async (req, res) => {
+  const { style } = req.body // optional style adjustment
+  const { pdfId } = req.params
+
+  try {
+    const pdfDoc = await Pdf.findOne({ _id: pdfId, user: req.user.userId })
+    if (!pdfDoc) return res.status(404).json({ message: 'PDF not found' })
+
+    for (let page of pdfDoc.pages) {
+      const explanation = await generateExplanation(page.text, style)
+      page.explanation = explanation
+    }
+
+    await pdfDoc.save()
+    res.json({ message: 'Explanations generated', pdf: pdfDoc })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to generate explanations' })
+  }
+})
+
 module.exports = router
