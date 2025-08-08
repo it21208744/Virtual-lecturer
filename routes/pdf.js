@@ -78,12 +78,18 @@ router.post('/upload', auth, upload.single('pdf'), async (req, res) => {
 
 // ===== Generate Explanations for Each Page =====
 router.post('/generate/:pdfId', auth, async (req, res) => {
-  const { style, voice, speed } = req.body // optional TTS params
+  const { style, voice, speed } = req.body
   const { pdfId } = req.params
 
   try {
     const pdfDoc = await Pdf.findOne({ _id: pdfId, user: req.user.userId })
     if (!pdfDoc) return res.status(404).json({ message: 'PDF not found' })
+
+    // Create subfolder for this PDF inside tts-audio folder
+    const pdfAudioDir = path.join(__dirname, '../tts-audio', pdfId.toString())
+    if (!fs.existsSync(pdfAudioDir)) {
+      fs.mkdirSync(pdfAudioDir, { recursive: true })
+    }
 
     for (let page of pdfDoc.pages) {
       if (!page.text || page.text.trim() === '') {
@@ -92,23 +98,24 @@ router.post('/generate/:pdfId', auth, async (req, res) => {
         continue
       }
 
-      // Generate explanation
       const explanation = await generateExplanation(page.text, style)
       page.explanation = explanation
 
-      // Generate TTS audio buffer
       const audioContent = await textToSpeechConvert(
         explanation,
         voice || 'en-US-Wavenet-D',
         speed || 1.0
       )
 
-      // Save audio file locally (e.g., in 'tts-audio' folder)
-      const audioFileName = `tts-${pdfDoc._id}-${page.pageNumber}.mp3`
-      const audioFilePath = path.join(__dirname, '../tts-audio/', audioFileName)
+      // Save audio in the PDF subfolder
+      const audioFileName = `tts-page-${page.pageNumber}.mp3`
+      const audioFilePath = path.join(pdfAudioDir, audioFileName)
 
       await fs.promises.writeFile(audioFilePath, audioContent, 'binary')
-      page.audioFileName = audioFileName
+
+      // Store relative path or filename to retrieve later
+      // For example: 'pdfId/tts-page-1.mp3'
+      page.audioFileName = path.join(pdfId.toString(), audioFileName)
     }
 
     await pdfDoc.save()
