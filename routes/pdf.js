@@ -183,4 +183,34 @@ router.get('/pdf/:pdfId', auth, async (req, res) => {
   }
 })
 
+router.get('/all-pdfs', auth, async (req, res) => {
+  try {
+    const pdfDocs = await Pdf.find({ user: req.user.userId })
+
+    const baseAudioUrl = `${req.protocol}://${req.get('host')}/tts-audio/`
+
+    const pdfsWithExplanations = pdfDocs.map((pdfDoc) => {
+      const pagesWithAudioUrls = pdfDoc.pages.map((page) => ({
+        pageNumber: page.pageNumber,
+        text: page.text,
+        explanation: page.explanation,
+        audioUrl: page.audioFileName
+          ? baseAudioUrl + page.audioFileName.replace(/\\/g, '/')
+          : null,
+      }))
+
+      return {
+        pdfId: pdfDoc._id,
+        originalFileName: pdfDoc.originalFileName,
+        pages: pagesWithAudioUrls,
+      }
+    })
+
+    res.json({ pdfs: pdfsWithExplanations })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to fetch PDFs' })
+  }
+})
+
 module.exports = router
