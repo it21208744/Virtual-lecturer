@@ -114,7 +114,11 @@ router.post('/generate/:pdfId', auth, subscriptionCheck, async (req, res) => {
         continue
       }
 
-      const explanation = await generateExplanation(page.text, style)
+      const explanation = await generateExplanation(
+        page.text,
+        style,
+        page.pageNumber
+      )
       page.explanation = explanation
 
       const audioContent = await textToSpeechConvert(
