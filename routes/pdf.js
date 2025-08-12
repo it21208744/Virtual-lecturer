@@ -9,7 +9,7 @@ const Pdf = require('../models/Pdf')
 const User = require('../models/User')
 const { textToSpeechConvert } = require('../utils/tts')
 
-// Use legacy build for CommonJS compatibility
+
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js')
 pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(
   __dirname,
@@ -42,7 +42,7 @@ const upload = multer({
 router.post(
   '/upload',
   auth,
-  subscriptionCheck, // <-- fixed missing comma here
+  subscriptionCheck, 
   upload.single('pdf'),
   async (req, res) => {
     try {
@@ -59,7 +59,7 @@ router.post(
         pagesArray.push({
           pageNumber: pageNum,
           text: pageText,
-          explanation: '', // placeholder for explanation later
+          explanation: '', 
         })
       }
 
@@ -83,7 +83,7 @@ router.post(
         message: 'PDF uploaded and processed page-wise',
         pdfId: pdfRecord._id,
         totalPages: pagesArray.length,
-        freeTrialLeft: user.freeTrialCount, // optional: send remaining trials to frontend
+        freeTrialLeft: user.freeTrialCount, 
       })
     } catch (error) {
       console.error(error)
@@ -101,7 +101,7 @@ router.post('/generate/:pdfId', auth, subscriptionCheck, async (req, res) => {
     const pdfDoc = await Pdf.findOne({ _id: pdfId, user: req.user.userId })
     if (!pdfDoc) return res.status(404).json({ message: 'PDF not found' })
 
-    // Create subfolder for this PDF inside tts-audio folder
+
     const pdfAudioDir = path.join(__dirname, '../tts-audio', pdfId.toString())
     if (!fs.existsSync(pdfAudioDir)) {
       fs.mkdirSync(pdfAudioDir, { recursive: true })
@@ -133,8 +133,8 @@ router.post('/generate/:pdfId', auth, subscriptionCheck, async (req, res) => {
 
       await fs.promises.writeFile(audioFilePath, audioContent, 'binary')
 
-      // Store relative path or filename to retrieve later
-      // For example: 'pdfId/tts-page-1.mp3'
+    
+    
       page.audioFileName = path.join(pdfId.toString(), audioFileName)
     }
 
@@ -160,7 +160,7 @@ router.get('/pdf/:pdfId', auth, async (req, res) => {
     })
     if (!pdfDoc) return res.status(404).json({ message: 'PDF not found' })
 
-    // Build full audio URLs for each page (adjust base URL as needed)
+   
     const baseAudioUrl = `${req.protocol}://${req.get('host')}/tts-audio/`
 
     const pagesWithAudioUrls = pdfDoc.pages.map((page) => ({
