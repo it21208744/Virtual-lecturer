@@ -10,7 +10,7 @@ const subscriptionCheck = async (req, res, next) => {
 
     const now = new Date()
 
-    // Check if subscription is active (not 'free') and expiryDate is valid & in future
+ 
     if (
       user.subscriptionStatus.plan !== 'free' &&
       user.subscriptionStatus.expiryDate &&
@@ -19,12 +19,12 @@ const subscriptionCheck = async (req, res, next) => {
       return next()
     }
 
-    // If no active subscription, check freeTrialCount
+
     if (user.freeTrialCount > 0) {
       return next()
     }
 
-    // Trial expired and no subscription
+  
     return res.status(403).json({
       message:
         'Trial expired. Please subscribe to continue using this feature.',
