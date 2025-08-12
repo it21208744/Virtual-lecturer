@@ -9,7 +9,7 @@ const PdfSchema = new mongoose.Schema({
     {
       pageNumber: Number,
       text: String,
-      explanation: String, // AI-generated explanation
+      explanation: String, 
       audioFileName: String,
     },
   ],
